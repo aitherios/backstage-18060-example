@@ -6,6 +6,11 @@ import {
 import { Router } from 'express';
 import { PluginEnvironment } from '../types';
 
+import {
+  stringifyEntityRef,
+  DEFAULT_NAMESPACE,
+} from '@backstage/catalog-model';
+
 export default async function createPlugin(
   env: PluginEnvironment,
 ): Promise<Router> {
@@ -37,16 +42,32 @@ export default async function createPlugin(
       //   https://backstage.io/docs/auth/identity-resolver
       github: providers.github.create({
         signIn: {
-          resolver(_, ctx) {
-            const userRef = 'user:default/guest'; // Must be a full entity reference
+          resolver({ result: { fullProfile: { username } } }, ctx) {
+            if (!username) {
+              throw new Error(`GitHub user profile does not contain a username`);
+            }
+            const userEntity = stringifyEntityRef({
+              kind: 'User',
+              name: username,
+              namespace: DEFAULT_NAMESPACE,
+            });
+            const guestUserEntity = stringifyEntityRef({
+              kind: 'User',
+              name: 'guest',
+              namespace: DEFAULT_NAMESPACE,
+            });
+            const guestsGroupEntity = stringifyEntityRef({
+              kind: 'Group',
+              name: 'guests',
+              namespace: DEFAULT_NAMESPACE,
+            });
             return ctx.issueToken({
               claims: {
-                sub: userRef, // The user's own identity
-                ent: [userRef], // A list of identities that the user claims ownership through
+                sub: userEntity, // The user's own identity
+                ent: [userEntity, guestUserEntity, guestsGroupEntity], // A list of identities that the user claims ownership through
               },
             });
           },
-          // resolver: providers.github.resolvers.usernameMatchingUserEntityName(),
         },
       }),
     },
